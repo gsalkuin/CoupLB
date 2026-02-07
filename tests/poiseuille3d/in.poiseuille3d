@@ -1,0 +1,24 @@
+# 3D Poiseuille flow in a channel (walls in y, periodic in x and z)
+units           lj
+dimension       3
+boundary        p f p
+atom_style      atomic
+
+region          box block 0.0 8.0 0.0 32.0 0.0 8.0
+create_box      1 box
+create_atoms    1 single 4.0 16.0 4.0
+mass            1 1.0
+group           fluid empty
+pair_style      none
+timestep        1.0
+
+fix  flow all couplb 8 32 8 0.1 1.0 &
+     wall_y 1 1 &
+     gravity 1e-5 0.0 0.0 &
+     output 5000 couplb_poiseuille3d.dat &
+     check_every 2000
+
+thermo          5000
+thermo_style    custom step cpu
+run             50000
+print "=== 3D Poiseuille test done ==="
