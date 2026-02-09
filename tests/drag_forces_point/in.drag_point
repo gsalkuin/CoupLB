@@ -1,0 +1,94 @@
+# ============================================================================
+# POINT-FORCE DRAG VALIDATION FOR COUPLB v8.2
+#
+# Physics: A single particle with mass m in viscous fluid, subject to
+# constant external force F. CoupLB's direct-forcing IBM treats each
+# atom as a regularized point force (Stokeslet), NOT as a solid sphere.
+#
+# Validation checks:
+#   1. Force balance: at steady state, IBM drag = applied force (Newton 3)
+#   2. Conservation: total momentum (fluid + particle) evolves linearly
+#   3. v_y, v_z remain at machine-zero (no spurious transverse motion)
+#   4. v_x reaches a positive, steady terminal velocity
+#
+# Parameters:
+#   Grid:    32x32x32 cells, dx_phys=1.0 → domain 32x32x32 LJ
+#   LBM:     nu=0.1, tau=0.8, rho0=1.0
+#   Timing:  timestep=0.01, dt_lbm=0.01
+#   Scales:  vel_scale = dx/dt_lbm = 100, force_scale = rho0*dx^4/dt^2 = 1e4
+#   Force:   F=0.001 LJ → F_lat = 1e-7 (very low Ma, Re << 1)
+#
+# Run: mpirun -np 8 lmp_mpi -in in.drag_point
+# Ref: mpirun -np 1 lmp_mpi -in in.drag_point  (remove processors line)
+# ============================================================================
+
+units           lj
+dimension       3
+boundary        p p p
+atom_style      atomic
+atom_modify     map array
+
+# 8 CPUs: 2x2x2 → 16x16x16 cells/rank (well above Roma minimum of 3)
+processors      2 2 2
+
+# Domain: 32^3 cells with dx=1.0 → box 32x32x32
+variable        N equal 32
+variable        half equal ${N}/2.0
+
+region          box block -${half} ${half} -${half} ${half} -${half} ${half}
+create_box      1 box
+create_atoms    1 single 0.0 0.0 0.0
+mass            1 1.0
+
+pair_style      none
+timestep        0.01
+
+# External force on particle (constant push in +x)
+variable        Fext equal 0.001
+fix             push all addforce ${Fext} 0.0 0.0
+
+# LBM fluid: nu=0.1 → tau=0.8, dx=1.0 (box length / N cells)
+fix             flow all couplb ${N} ${N} ${N} 0.1 1.0 &
+                dx 1.0 &
+                kernel roma &
+                output 1000 drag_profile.dat &
+                check_every 500
+
+fix             integrate all nve
+
+# ============================================================================
+# DIAGNOSTICS
+# ============================================================================
+variable        vx equal vx[1]
+variable        vy equal vy[1]
+variable        vz equal vz[1]
+variable        vmag equal sqrt(v_vx*v_vx+v_vy*v_vy+v_vz*v_vz)
+variable        px equal x[1]
+
+thermo          500
+thermo_style    custom step v_vx v_vy v_vz v_vmag v_px cpu
+
+# ============================================================================
+# Phase 1: Spin-up (particle accelerates toward terminal velocity)
+# ============================================================================
+run             10000
+
+# ============================================================================
+# Phase 2: Steady-state measurement
+# ============================================================================
+print "========================================================"
+print "  POINT-FORCE DRAG VALIDATION (CoupLB v8.2)"
+print "========================================================"
+print "  Grid:         ${N}x${N}x${N}, dx=1.0"
+print "  nu=0.1, tau=0.8, rho0=1.0"
+print "  Applied F_x = ${Fext}"
+print "  Measured v_x = ${vx}"
+print "  Measured v_y = ${vy}  (expect ~0)"
+print "  Measured v_z = ${vz}  (expect ~0)"
+print "========================================================"
+print "  CHECKS:"
+print "  1. v_x positive and steady over last ~2000 steps"
+print "  2. v_y, v_z < 1e-8 (no transverse drift)"
+print "  3. CoupLB diagnostics: constant mass, Ma < 0.1"
+print "  4. No density clamp warnings"
+print "========================================================"
