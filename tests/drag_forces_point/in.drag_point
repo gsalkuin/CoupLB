@@ -1,5 +1,5 @@
 # ============================================================================
-# POINT-FORCE DRAG VALIDATION FOR COUPLB v8.2
+# POINT-FORCE DRAG VALIDATION FOR COUPLB
 #
 # Physics: A single particle with mass m in viscous fluid, subject to
 # constant external force F. CoupLB's direct-forcing IBM treats each
