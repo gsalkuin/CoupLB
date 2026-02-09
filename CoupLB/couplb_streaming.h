@@ -113,8 +113,9 @@ public:
               const double eu = Lattice::e[q][0]*grid.bc_ux[sn]
                               + Lattice::e[q][1]*grid.bc_uy[sn]
                               + Lattice::e[q][2]*grid.bc_uz[sn];
-              const double rw = std::max(grid.rho[n], rho_floor);
-              grid.fi_buf(q, n) = grid.fi(qo, n) + 2.0*Lattice::w[qo]*rw*eu/cs2;
+              const double rho_floor = std::max(Constants::RHO_CLAMP_FRAC * rho0, Constants::RHO_MIN);
+              const double rw = std::max(grid.rho[n], rho_floor);  // Already prevents rw ≤ 0
+              grid.fi_buf(q, n) = grid.fi(qo, n) + 2.0*Lattice::w[qo]*rw*eu/cs2;              
             }
           }
         }
@@ -152,9 +153,9 @@ private:
 
   bool has_wall_on_face(const Grid<Lattice>& g, int dim, int pos) const {
     const int gx=g.gx, gy=g.gy, gz=g.gz;
-    if (dim==0) { for(int k=0;k<gz;k++) for(int j=0;j<gy;j++) if(g.type[g.idx(pos,j,k)]!=0) return true; }
-    else if (dim==1) { for(int k=0;k<gz;k++) for(int i=0;i<gx;i++) if(g.type[g.idx(i,pos,k)]!=0) return true; }
-    else { for(int j=0;j<gy;j++) for(int i=0;i<gx;i++) if(g.type[g.idx(i,j,pos)]!=0) return true; }
+    if (dim==0) { for(int k=0;k<gz;k++) for(int j=0;j<gy;j++) if(g.type[g.idx(pos,j,k)]==0) return false; }
+    else if (dim==1) { for(int k=0;k<gz;k++) for(int i=0;i<gx;i++) if(g.type[g.idx(i,pos,k)]==0) return false; }
+    else { for(int j=0;j<gy;j++) for(int i=0;i<gx;i++) if(g.type[g.idx(i,j,pos)]==0) return false; }
     return false;
   }
 

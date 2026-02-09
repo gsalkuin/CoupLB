@@ -12,6 +12,7 @@ FixStyle(couplb,FixCoupLB);
 #include "couplb_streaming.h"
 #include "couplb_boundary.h"
 #include "couplb_ibm.h"
+#include "couplb_io.h"
 #include <memory>
 #include <string>
 
@@ -45,6 +46,19 @@ private:
   bigint next_check;
   bigint lbm_step_count;
 
+  int vtk_every;
+  std::string vtk_prefix;
+  std::string vtk_pvd_file;
+  std::vector<long> vtk_steps;
+  bigint next_vtk;
+
+  int checkpoint_every;
+  std::string checkpoint_prefix;
+  bigint next_checkpoint;
+
+  std::string restart_prefix;
+  bool do_restart;
+
   CoupLB::DeltaKernel ibm_kernel;
   bool is3d;
 
@@ -70,6 +84,7 @@ private:
   template <typename L> void apply_external_force(CoupLB::Grid<L>&);
   template <typename L> void enforce_wall_ghost_fields(CoupLB::Grid<L>&);
   template <typename L> void check_stability(CoupLB::Grid<L>&);
+  template <typename L> void check_stability_precomputed(CoupLB::Grid<L>&);
   template <typename L> void write_profile(CoupLB::Grid<L>&, bigint);
 };
 

@@ -28,6 +28,9 @@ using namespace FixConst;
      output N file       write velocity profile every N steps
      check_every N       stability check frequency (default 0 = at output)
      kernel {roma|peskin4}  IBM delta function (default roma)
+     vtk N prefix        write VTK field every N steps
+     checkpoint N prefix write checkpoint every N steps
+     restart prefix      load checkpoint on init
 ------------------------------------------------------------------ */
 
 FixCoupLB::FixCoupLB(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg),
@@ -46,6 +49,9 @@ FixCoupLB::FixCoupLB(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg),
   dx_phys = 0.0;
   output_every = 0; output_file = "couplb_profile.dat";
   check_every = 0; lbm_step_count = 0;
+  vtk_every = 0; vtk_prefix = "couplb_vtk"; vtk_pvd_file = "";
+  checkpoint_every = 0; checkpoint_prefix = "couplb_ckpt";
+  do_restart = false;
   ibm_kernel = CoupLB::DeltaKernel::ROMA;
 
   int iarg = 8;
@@ -80,6 +86,17 @@ FixCoupLB::FixCoupLB(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg),
       else if (strcmp(arg[iarg+1],"peskin4")==0) ibm_kernel = CoupLB::DeltaKernel::PESKIN4;
       else error->all(FLERR,"fix couplb kernel: use roma or peskin4");
       iarg+=2;
+    } else if (strcmp(arg[iarg],"vtk")==0) {
+      if (iarg+3>narg) error->all(FLERR,"fix couplb vtk: need N prefix");
+      vtk_every=std::stoi(arg[iarg+1]); vtk_prefix=arg[iarg+2];
+      vtk_pvd_file = vtk_prefix + ".pvd";
+      iarg+=3;
+    } else if (strcmp(arg[iarg],"checkpoint")==0) {
+      if (iarg+3>narg) error->all(FLERR,"fix couplb checkpoint: need N prefix");
+      checkpoint_every=std::stoi(arg[iarg+1]); checkpoint_prefix=arg[iarg+2]; iarg+=3;
+    } else if (strcmp(arg[iarg],"restart")==0) {
+      if (iarg+2>narg) error->all(FLERR,"fix couplb restart: need prefix");
+      restart_prefix=arg[iarg+1]; do_restart=true; iarg+=2;
     } else {
       error->all(FLERR,"Unknown fix couplb keyword");
     }
@@ -118,7 +135,6 @@ void FixCoupLB::init()
   for (int d=0;d<dim+1;d++) dp *= dx_phys;
   force_scale = rho0 * dp / (dt_lbm * dt_lbm);
 
-  // Sanity: force_scale must be positive and finite
   if (force_scale <= 0.0 || !std::isfinite(force_scale))
     error->all(FLERR, "fix couplb: force_scale is non-positive or non-finite "
                "(check rho0, dx_phys, dt_lbm)");
@@ -146,6 +162,9 @@ void FixCoupLB::init()
 
   if (output_every>0) next_output = update->ntimestep;
   next_check = (check_every>0) ? update->ntimestep+check_every : -1;
+  next_vtk = (vtk_every>0) ? update->ntimestep : -1;
+  vtk_steps.clear();
+  next_checkpoint = (checkpoint_every>0) ? update->ntimestep+checkpoint_every : -1;
   lbm_step_count = 0;
 
   setup_grid();
@@ -154,6 +173,18 @@ void FixCoupLB::init()
   // Precompute wall face flags for fast exchange checks
   if (is3d) stream3d->precompute_wall_flags(*grid3d);
   else      stream2d->precompute_wall_flags(*grid2d);
+
+  // Load checkpoint if restart requested (after grid + boundaries are set)
+  if (do_restart) {
+    long ckpt_step = 0;
+    bool ok;
+    if (is3d) ok = CoupLB::IO<CoupLB::D3Q19>::read_checkpoint(*grid3d, world, restart_prefix, ckpt_step);
+    else      ok = CoupLB::IO<CoupLB::D2Q9>::read_checkpoint(*grid2d, world, restart_prefix, ckpt_step);
+    if (!ok) error->all(FLERR, "fix couplb: failed to read checkpoint");
+    if (comm->me==0 && screen)
+      fprintf(screen, "CoupLB: restarted from checkpoint step %ld\n", ckpt_step);
+    do_restart = false;  // Only load once
+  }
 
   setup_ycomm();
 
@@ -173,6 +204,8 @@ void FixCoupLB::init()
     if (output_every>0) fprintf(screen,"CoupLB: output every %d -> %s\n",output_every,output_file.c_str());
     if (check_every>0) fprintf(screen,"CoupLB: stability check every %d steps\n",check_every);
     if (nsub>1) fprintf(screen,"CoupLB: nsub=%d (pure-fluid)\n",nsub);
+    if (vtk_every>0) fprintf(screen,"CoupLB: VTK output every %d -> %s_*.vti (series: %s)\n",vtk_every,vtk_prefix.c_str(),vtk_pvd_file.c_str());
+    if (checkpoint_every>0) fprintf(screen,"CoupLB: checkpoint every %d -> %s.*.clbk\n",checkpoint_every,checkpoint_prefix.c_str());
     fprintf(screen,"CoupLB: periodicity=(%d,%d,%d) procgrid=(%d,%d,%d)\n",
       domain->periodicity[0],domain->periodicity[1],domain->periodicity[2],
       comm->procgrid[0],comm->procgrid[1],comm->procgrid[2]);
@@ -256,7 +289,13 @@ void FixCoupLB::lbm_step() {
 
 template<typename L>
 void FixCoupLB::do_lbm_step(CoupLB::Grid<L>& g, CoupLB::BGK<L>& b, CoupLB::Streaming<L>& s) {
-  apply_external_force(g); g.compute_macroscopic(true); b.collide(g); s.exchange(g); s.stream(g); g.clear_forces();
+  apply_external_force(g);
+  g.compute_macroscopic(true);
+  b.collide(g);
+  s.exchange(g);
+  s.stream(g);
+  enforce_wall_ghost_fields(g);
+  g.clear_forces();
 }
 
 template<typename L>
@@ -286,13 +325,20 @@ template<typename L>
 void FixCoupLB::do_ibm_coupling(CoupLB::Grid<L>& g, CoupLB::Streaming<L>& s) {
   double **x=atom->x, **v=atom->v, **f=atom->f;
   const int nl=atom->nlocal; const int *mk=atom->mask;
+
+  enforce_wall_ghost_fields(g);
+
+  // Global check: only skip IBM entirely if NO rank has particles.
+  // MPI exchanges are collective — every rank must participate.
   int ng=0; for(int i=0;i<nl;i++) if(mk[i]&groupbit) ng++;
-  if (!ng) return;
+  int ng_global=0;
+  MPI_Allreduce(&ng,&ng_global,1,MPI_INT,MPI_SUM,world);
+  if (!ng_global) return;
 
   g.compute_macroscopic(false);
   s.exchange_velocity(g);
-  enforce_wall_ghost_fields(g);
 
+  // Local IBM work — only ranks with particles do interpolation/spreading
   for (int i=0;i<nl;i++) {
     if (!(mk[i]&groupbit)) continue;
     auto uf = CoupLB::IBM<L>::interpolate(g, x[i][0], x[i][1], x[i][2], domain_lo, ibm_kernel);
@@ -310,6 +356,10 @@ void FixCoupLB::do_ibm_coupling(CoupLB::Grid<L>& g, CoupLB::Streaming<L>& s) {
   // boundaries may have spread force to ghost cells; without this
   // step those forces would be silently lost.
   s.exchange_forces(g);
+  // NOTE: Do NOT clear_forces() here. The spread IBM reaction forces
+  // must survive until the next lbm_step()'s collision, where they
+  // enter via Guo forcing. clear_forces() at the end of do_lbm_step
+  // handles the reset after they've been consumed.
 }
 
 template<typename L>
@@ -323,6 +373,11 @@ void FixCoupLB::enforce_wall_ghost_fields(CoupLB::Grid<L>& g) {
 template<typename L>
 void FixCoupLB::check_stability(CoupLB::Grid<L>& g) {
   g.compute_macroscopic(false);
+  check_stability_precomputed(g);
+}
+
+template<typename L>
+void FixCoupLB::check_stability_precomputed(CoupLB::Grid<L>& g) {
   double lu=g.max_velocity(), gu=0;
   MPI_Allreduce(&lu,&gu,1,MPI_DOUBLE,MPI_MAX,world);
   const double cs=std::sqrt(L::cs2), ma=gu/cs;
@@ -340,7 +395,6 @@ void FixCoupLB::check_stability(CoupLB::Grid<L>& g) {
     fprintf(screen,"CoupLB step %ld: Ma=%.4f mass=%.8e mom=(%.4e,%.4e,%.4e)\n",
       (long)update->ntimestep,ma,gm,gpx,gpy,gpz);
 
-  // Report density clamps (indicates numerical trouble)
   int local_clamps = g.rho_clamp_count;
   int global_clamps = 0;
   MPI_Reduce(&local_clamps, &global_clamps, 1, MPI_INT, MPI_SUM, 0, world);
@@ -351,12 +405,39 @@ void FixCoupLB::check_stability(CoupLB::Grid<L>& g) {
 
 void FixCoupLB::end_of_step() {
   const bigint step = update->ntimestep;
-  bool chk=false, out=false;
+  bool chk=false, out=false, vtk=false, ckpt=false;
   if (check_every>0 && step>=next_check) { chk=true; next_check=step+check_every; }
   if (output_every>0 && step>=next_output) { out=true; chk=true; next_output+=output_every; }
-  if (!chk && !out) return;
-  if (is3d) { if(chk) check_stability(*grid3d); if(out) write_profile(*grid3d,step); }
-  else      { if(chk) check_stability(*grid2d); if(out) write_profile(*grid2d,step); }
+  if (vtk_every>0 && step>=next_vtk) { vtk=true; next_vtk=step+vtk_every; }
+  if (checkpoint_every>0 && step>=next_checkpoint) { ckpt=true; next_checkpoint=step+checkpoint_every; }
+  if (!chk && !out && !vtk && !ckpt) return;
+
+  // Compute macroscopic fields once if any output needs them.
+  // check_stability, write_profile, and write_vtk all read rho/ux/uy/uz.
+  // checkpoint only needs f[] so it doesn't require this.
+  const bool need_macro = chk || out || vtk;
+
+  if (is3d) {
+    if (need_macro) grid3d->compute_macroscopic(false);
+    if (chk) check_stability_precomputed(*grid3d);
+    if (out) write_profile(*grid3d, step);
+    if (vtk) {
+      CoupLB::IO<CoupLB::D3Q19>::write_vtk(*grid3d, world, (long)step, vtk_prefix, domain_lo, dx_phys);
+      vtk_steps.push_back((long)step);
+      if (comm->me==0) CoupLB::IO<CoupLB::D3Q19>::write_pvd(vtk_pvd_file, vtk_prefix, vtk_steps, dt_lbm);
+    }
+    if (ckpt) CoupLB::IO<CoupLB::D3Q19>::write_checkpoint(*grid3d, world, (long)step, checkpoint_prefix);
+  } else {
+    if (need_macro) grid2d->compute_macroscopic(false);
+    if (chk) check_stability_precomputed(*grid2d);
+    if (out) write_profile(*grid2d, step);
+    if (vtk) {
+      CoupLB::IO<CoupLB::D2Q9>::write_vtk(*grid2d, world, (long)step, vtk_prefix, domain_lo, dx_phys);
+      vtk_steps.push_back((long)step);
+      if (comm->me==0) CoupLB::IO<CoupLB::D2Q9>::write_pvd(vtk_pvd_file, vtk_prefix, vtk_steps, dt_lbm);
+    }
+    if (ckpt) CoupLB::IO<CoupLB::D2Q9>::write_checkpoint(*grid2d, world, (long)step, checkpoint_prefix);
+  }
 }
 
 template<typename L>
