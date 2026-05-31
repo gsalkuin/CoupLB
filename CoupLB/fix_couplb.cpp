@@ -24,6 +24,7 @@ static bool is_couplb_keyword(const char* s)
   static const char* keywords[] = {
     "md_per_lb", "xi_ibm", "gravity",
     "wall_x", "wall_y", "wall_z", "wall_vel",
+    "solid_stl", "solid_scale", "solid_translate", "solid_side",
     "output", "check_every", "kernel",
     "vtk", "vtk_region", "vtk_solid",
     "checkpoint", "restart",
@@ -57,6 +58,10 @@ static bool is_couplb_keyword(const char* s)
      wall_y lo hi        y-boundary: 0=periodic 1=no-slip 2=moving 3=free-slip 4=open
      wall_z lo hi        z-boundary (3D only): 0=periodic 1=no-slip 2=moving 3=free-slip 4=open
      wall_vel vx vy vz   velocity for type-2 walls
+     solid_stl file no-slip  triangulated STL solid wall geometry (3D only)
+     solid_scale value       scale STL coordinates before translation (default 1)
+     solid_translate dx dy dz translate STL coordinates after scaling
+     solid_side inside|outside  which side of STL is solid (default inside)
      output N file       write velocity profile every N steps
      check_every N       stability check frequency
 
@@ -92,6 +97,11 @@ FixCoupLB::FixCoupLB(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg),
   gxvar = gyvar = gzvar = -1;
   wall_xlo = wall_xhi = wall_ylo = wall_yhi = wall_zlo = wall_zhi = 0;
   wall_vel[0] = wall_vel[1] = wall_vel[2] = 0.0;
+  solid_stl_on = false;
+  solid_stl_file = "";
+  solid_stl_scale = 1.0;
+  solid_stl_translate[0] = solid_stl_translate[1] = solid_stl_translate[2] = 0.0;
+  solid_stl_inside_is_solid = true;
   dx = 0.0;
   output_every = 0; output_file = "couplb_profile.dat";
   check_every = 0; lbm_step_count = 0;
@@ -167,6 +177,34 @@ FixCoupLB::FixCoupLB(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg),
       wall_vel[1]=std::stod(arg[iarg+2]);
       wall_vel[2]=std::stod(arg[iarg+3]);
       iarg+=4;
+    } else if (strcmp(arg[iarg],"solid_stl")==0) {
+      if (iarg+2>narg) error->all(FLERR,"fix couplb solid_stl: need filename");
+      solid_stl_file = arg[iarg+1];
+      solid_stl_on = true;
+      iarg += 2;
+      if (iarg < narg && !is_couplb_keyword(arg[iarg])) {
+        if (strcmp(arg[iarg],"no-slip") != 0)
+          error->all(FLERR,"fix couplb solid_stl: only no-slip is currently supported");
+        iarg++;
+      }
+    } else if (strcmp(arg[iarg],"solid_scale")==0) {
+      if (iarg+2>narg) error->all(FLERR,"fix couplb solid_scale: need 1 value");
+      solid_stl_scale = std::stod(arg[iarg+1]);
+      if (solid_stl_scale <= 0.0 || !std::isfinite(solid_stl_scale))
+        error->all(FLERR,"fix couplb: solid_scale must be positive and finite");
+      iarg += 2;
+    } else if (strcmp(arg[iarg],"solid_translate")==0) {
+      if (iarg+4>narg) error->all(FLERR,"fix couplb solid_translate: need 3 values");
+      solid_stl_translate[0] = std::stod(arg[iarg+1]);
+      solid_stl_translate[1] = std::stod(arg[iarg+2]);
+      solid_stl_translate[2] = std::stod(arg[iarg+3]);
+      iarg += 4;
+    } else if (strcmp(arg[iarg],"solid_side")==0) {
+      if (iarg+2>narg) error->all(FLERR,"fix couplb solid_side: need inside or outside");
+      if (strcmp(arg[iarg+1],"inside")==0) solid_stl_inside_is_solid = true;
+      else if (strcmp(arg[iarg+1],"outside")==0) solid_stl_inside_is_solid = false;
+      else error->all(FLERR,"fix couplb solid_side: use inside or outside");
+      iarg += 2;
     } else if (strcmp(arg[iarg],"output")==0) {
       if (iarg+3>narg) error->all(FLERR,"fix couplb output: need 2 values");
       output_every=std::stoi(arg[iarg+1]); output_file=arg[iarg+2];
@@ -235,6 +273,7 @@ FixCoupLB::FixCoupLB(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg),
 
   is3d = (domain->dimension == 3);
   if (!is3d && Nz != 1) error->all(FLERR,"fix couplb: Nz must be 1 for 2D");
+  if (!is3d && solid_stl_on) error->all(FLERR,"fix couplb: solid_stl is only supported in 3D");
 }
 
 FixCoupLB::~FixCoupLB()
@@ -468,6 +507,11 @@ void FixCoupLB::init()
     if (wall_xlo||wall_xhi) fprintf(screen,"CoupLB: x-walls lo=%d hi=%d\n",wall_xlo,wall_xhi);
     if (wall_ylo||wall_yhi) fprintf(screen,"CoupLB: y-walls lo=%d hi=%d\n",wall_ylo,wall_yhi);
     if (wall_zlo||wall_zhi) fprintf(screen,"CoupLB: z-walls lo=%d hi=%d\n",wall_zlo,wall_zhi);
+    if (solid_stl_on)
+      fprintf(screen,"CoupLB: solid_stl %s scale=%.6g translate=(%.6g,%.6g,%.6g) side=%s\n",
+              solid_stl_file.c_str(), solid_stl_scale,
+              solid_stl_translate[0], solid_stl_translate[1], solid_stl_translate[2],
+              solid_stl_inside_is_solid ? "inside" : "outside");
     if (uw > CoupLB::Constants::ZERO_TOL)
       fprintf(screen,"CoupLB: wall_vel=(%.4e,%.4e,%.4e) -> lattice=(%.4e,%.4e,%.4e)\n",
               wall_vel[0],wall_vel[1],wall_vel[2], wv_lb[0],wv_lb[1],wv_lb[2]);
@@ -530,11 +574,41 @@ void FixCoupLB::setup_boundaries(const double wv_lb[3])
     if (wall_ylo||wall_yhi) CoupLB::Boundary<CoupLB::D3Q19>::set_walls_y(g,aylo&&wall_ylo>0,ayhi&&wall_yhi>0,wall_ylo,wall_yhi);
     if (wall_zlo||wall_zhi) CoupLB::Boundary<CoupLB::D3Q19>::set_walls_z(g,azlo&&wall_zlo>0,azhi&&wall_zhi>0,wall_zlo,wall_zhi);
     CoupLB::Boundary<CoupLB::D3Q19>::set_wall_velocity(g,2,wv_lb[0],wv_lb[1],wv_lb[2]);
+    apply_stl_boundaries(g, wv_lb);
   } else {
     auto& g=*grid2d;
     if (wall_xlo||wall_xhi) CoupLB::Boundary<CoupLB::D2Q9>::set_walls_x(g,axlo&&wall_xlo>0,axhi&&wall_xhi>0,wall_xlo,wall_xhi);
     if (wall_ylo||wall_yhi) CoupLB::Boundary<CoupLB::D2Q9>::set_walls_y(g,aylo&&wall_ylo>0,ayhi&&wall_yhi>0,wall_ylo,wall_yhi);
     CoupLB::Boundary<CoupLB::D2Q9>::set_wall_velocity(g,2,wv_lb[0],wv_lb[1],0);
+  }
+}
+
+template<typename L>
+void FixCoupLB::apply_stl_boundaries(CoupLB::Grid<L>& g, const double wv_lb[3])
+{
+  if (!solid_stl_on) return;
+
+  CoupLB::STLMesh mesh;
+  std::string msg;
+  if (!mesh.load(solid_stl_file, solid_stl_scale, solid_stl_translate, msg))
+    error->all(FLERR, "fix couplb solid_stl: {}", msg);
+
+  const auto stats = CoupLB::apply_stl_solid(g, mesh, domain_lo, dx,
+                                             solid_stl_inside_is_solid, wv_lb);
+
+  int total_solid = 0, total_links = 0, total_missed = 0;
+  MPI_Allreduce(&stats.solid_nodes, &total_solid, 1, MPI_INT, MPI_SUM, world);
+  MPI_Allreduce(&stats.wall_links, &total_links, 1, MPI_INT, MPI_SUM, world);
+  MPI_Allreduce(&stats.missed_links, &total_missed, 1, MPI_INT, MPI_SUM, world);
+
+  if (comm->me == 0 && screen) {
+    fprintf(screen,
+            "CoupLB: solid_stl loaded %zu triangles, marked %d solid nodes and %d wall links\n",
+            mesh.tris.size(), total_solid, total_links);
+    if (total_missed > 0)
+      fprintf(screen,
+              "CoupLB WARNING: solid_stl used halfway fallback for %d wall links without segment intersections\n",
+              total_missed);
   }
 }
 

@@ -125,8 +125,11 @@ def validate_poiseuille(fname, g_phys):
         a2.set_ylabel('|error|')
         a2.grid(alpha=0.3)
         plt.tight_layout()
-        plt.savefig('poiseuille_validation.png', dpi=150)
-        print("  Plot -> poiseuille_validation.png\n")
+        try:
+            plt.savefig('poiseuille_validation.png', dpi=150)
+            print("  Plot -> poiseuille_validation.png\n")
+        except OSError as exc:
+            print(f"  Plot skipped: {exc}\n")
 
 
 def validate_couette(fname, Uw):
@@ -178,8 +181,11 @@ def validate_couette(fname, Uw):
         a2.set_ylabel('|error|')
         a2.grid(alpha=0.3)
         plt.tight_layout()
-        plt.savefig('couette_validation.png', dpi=150)
-        print("  Plot -> couette_validation.png\n")
+        try:
+            plt.savefig('couette_validation.png', dpi=150)
+            print("  Plot -> couette_validation.png\n")
+        except OSError as exc:
+            print(f"  Plot skipped: {exc}\n")
 
 
 if __name__ == '__main__':

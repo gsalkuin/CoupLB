@@ -36,6 +36,7 @@ run 50000
 - **IBM coupling:** Roma (3-point) or Peskin4 (4-point) delta kernels,
   sub-stepping with momentum conservation
 - **Boundaries:** No-slip, moving wall, free-slip, open, periodic
+- **CAD walls:** Static no-slip STL walls via link-wise bounce-back
 - **External forcing:** Constant or LAMMPS variable-style body forces
 - **I/O:** VTK (.vti + .pvd), solid VTK (.vtp), binary checkpoint/restart,
   ASCII profiles
@@ -72,8 +73,8 @@ fix ID group couplb Nx Ny Nz nu rho0 [keywords...]
 | `rho0` | Reference fluid density (LAMMPS units) |
 
 Common keywords: `md_per_lb`, `xi_ibm`, `gravity`, `wall_x/y/z`, `wall_vel`,
-`kernel`, `vtk`, `vtk_solid`, `vtk_region`, `checkpoint`, `restart`,
-`check_every`.
+`solid_stl`, `solid_scale`, `solid_translate`, `solid_side`, `kernel`, `vtk`,
+`vtk_solid`, `vtk_region`, `checkpoint`, `restart`, `check_every`.
 
 Full syntax, keyword table, and extended examples: **[docs/keywords.md](docs/keywords.md)**
 
@@ -124,6 +125,7 @@ examples/
 tests/
 ├── poiseuille2d/       — Poiseuille flow validation
 ├── poiseuille3d/       — 3D channel validation
+├── stl_channel/        — STL-defined no-slip channel validation
 ├── drag_forces_point/  — IBM drag on point particle
 ├── drag_forces_sphere/ — IBM drag on sphere
 ├── drag_forces_sphere_vtk/ — with VTK output

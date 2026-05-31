@@ -96,6 +96,8 @@ std::vector<double> fx, fy, fz;
 std::vector<int> type;
 std::vector<int> wall_dim;   // -1=fluid, 0/1/2=wall normal direction
 std::vector<double> bc_ux, bc_uy, bc_uz;
+std::vector<unsigned char> wall_link_bc;
+std::vector<double> wall_link_dist, wall_link_ux, wall_link_uy, wall_link_uz;
 // Diagnostic: number of density clamps in last compute_macroscopic call
 int rho_clamp_count;
 Grid() : nx(0), ny(0), nz(0), dx(1.0), ntotal(0),
@@ -120,6 +122,11 @@ fx.assign(ntotal, 0.0);  fy.assign(ntotal, 0.0);  fz.assign(ntotal, 0.0);
 type.assign(ntotal, 0);
 wall_dim.assign(ntotal, -1);
 bc_ux.assign(ntotal, 0.0);  bc_uy.assign(ntotal, 0.0);  bc_uz.assign(ntotal, 0.0);
+wall_link_bc.assign(Q * ntotal, 0);
+wall_link_dist.assign(Q * ntotal, 0.5);
+wall_link_ux.assign(Q * ntotal, 0.0);
+wall_link_uy.assign(Q * ntotal, 0.0);
+wall_link_uz.assign(Q * ntotal, 0.0);
 }
 inline int idx(int i, int j, int k = 0) const {
 assert(i >= 0 && i < gx);
@@ -134,6 +141,16 @@ inline double& fi(int q, int n)       { return f[q * ntotal + n]; }
 inline double  fi(int q, int n) const { return f[q * ntotal + n]; }
 inline double& fi_buf(int q, int n)       { return f_buf[q * ntotal + n]; }
 inline double  fi_buf(int q, int n) const { return f_buf[q * ntotal + n]; }
+inline unsigned char& wall_link(int q, int n) { return wall_link_bc[q * ntotal + n]; }
+inline unsigned char  wall_link(int q, int n) const { return wall_link_bc[q * ntotal + n]; }
+inline double& wall_dist(int q, int n) { return wall_link_dist[q * ntotal + n]; }
+inline double  wall_dist(int q, int n) const { return wall_link_dist[q * ntotal + n]; }
+inline double& wall_ux(int q, int n) { return wall_link_ux[q * ntotal + n]; }
+inline double  wall_ux(int q, int n) const { return wall_link_ux[q * ntotal + n]; }
+inline double& wall_uy(int q, int n) { return wall_link_uy[q * ntotal + n]; }
+inline double  wall_uy(int q, int n) const { return wall_link_uy[q * ntotal + n]; }
+inline double& wall_uz(int q, int n) { return wall_link_uz[q * ntotal + n]; }
+inline double  wall_uz(int q, int n) const { return wall_link_uz[q * ntotal + n]; }
 inline double feq(int q, double r, double u0, double u1, double u2) const {
 const double eu = Lattice::e[q][0]*u0 + Lattice::e[q][1]*u1
 + Lattice::e[q][2]*u2;

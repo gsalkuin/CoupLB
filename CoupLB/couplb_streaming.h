@@ -104,7 +104,33 @@ public:
             }
             const int sn = grid.idx(si, sj, sk);
             const int st = grid.type[sn];
-            if (st == 0) {
+            if (grid.wall_link(q, n)) {
+              const int qo = Lattice::opp[q];
+              const double delta = std::max(1e-6, std::min(1.0, grid.wall_dist(q, n)));
+              double bounced;
+              if (delta <= 0.5) {
+                const int fi = i + Lattice::e[q][0];
+                const int fj = j + Lattice::e[q][1];
+                const int fk = k + Lattice::e[q][2];
+                if (fi >= 0 && fi < gx && fj >= 0 && fj < gy &&
+                    ((Lattice::D != 3) || (fk >= 0 && fk < gz)) &&
+                    grid.type[grid.idx(fi, fj, fk)] == 0) {
+                  const int fn = grid.idx(fi, fj, fk);
+                  bounced = 2.0*delta*grid.fi(qo, n)
+                          + (1.0 - 2.0*delta)*grid.fi(qo, fn);
+                } else {
+                  bounced = grid.fi(qo, n);
+                }
+              } else {
+                bounced = (0.5/delta)*grid.fi(qo, n)
+                        + ((2.0*delta - 1.0)/(2.0*delta))*grid.fi(q, n);
+              }
+              const double eu = Lattice::e[q][0]*grid.wall_ux(q, n)
+                              + Lattice::e[q][1]*grid.wall_uy(q, n)
+                              + Lattice::e[q][2]*grid.wall_uz(q, n);
+              const double rw = std::max(grid.rho[n], rho_floor);
+              grid.fi_buf(q, n) = bounced + 2.0*Lattice::w[qo]*rw*eu/cs2;
+            } else if (st == 0) {
               grid.fi_buf(q, n) = grid.fi(q, sn);
             } else if (st == 1) {
               grid.fi_buf(q, n) = grid.fi(Lattice::opp[q], n);

@@ -13,6 +13,7 @@ FixStyle(couplb,FixCoupLB);
 #include "couplb_boundary.h"
 #include "couplb_ibm.h"
 #include "couplb_io.h"
+#include "couplb_solid_stl.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -56,6 +57,11 @@ private:
   double wall_vel[3];
   int wall_xlo, wall_xhi, wall_ylo, wall_yhi, wall_zlo, wall_zhi;
   double domain_lo[3], domain_hi[3];
+  bool solid_stl_on;
+  std::string solid_stl_file;
+  double solid_stl_scale;
+  double solid_stl_translate[3];
+  bool solid_stl_inside_is_solid;
 
   int output_every;
   std::string output_file;
@@ -115,6 +121,7 @@ private:
   template <typename L> void do_ibm_sub_coupling(CoupLB::Grid<L>&, CoupLB::Streaming<L>&, bool first);
   template <typename L> void apply_external_force(CoupLB::Grid<L>&);
   template <typename L> void enforce_wall_ghost_fields(CoupLB::Grid<L>&);
+  template <typename L> void apply_stl_boundaries(CoupLB::Grid<L>&, const double wv_lb[3]);
   template <typename L> void check_stability(CoupLB::Grid<L>&);
   template <typename L> void check_stability_precomputed(CoupLB::Grid<L>&);
   template <typename L> void write_profile(CoupLB::Grid<L>&, bigint);
