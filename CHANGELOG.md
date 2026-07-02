@@ -59,6 +59,8 @@
   `cmake/CMakeLists.txt` (or `src/Makefile`) before `-DPKG_COUPLB=yes` /
   `make yes-couplb` works, and that the examples need MOLECULE+BPM+DIPOLE.
 - `keywords.md`: updated `xi_ibm` bounds.
+- `LICENSE`: GPL-2.0 (matching LAMMPS, whose license governs code compiled
+  into it) and a README license section; `CITATION.cff` license field.
 
 ### Known limitations (documented, unchanged)
 - IBM delta-kernel stencils are clipped (and renormalized) for particles

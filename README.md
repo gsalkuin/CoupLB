@@ -172,6 +172,12 @@ reference results: [tests/README.md](tests/README.md)).
 - [ ] Early exit on VTK file open failure
 - [ ] Re-add `nsub` (multiple LBM per MD) if applications require it
 
+## License
+
+GPL-2.0, the same license as LAMMPS (see [LICENSE](LICENSE)). CoupLB
+compiles into LAMMPS, so it is distributed under the license of the code
+it links against. Copyright (c) 2026 the CoupLB authors.
+
 ## References
 
 Alkuino, Gabriel, Joel T. Clemmer, Christian D. Santangelo, and Teng Zhang.

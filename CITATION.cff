@@ -3,6 +3,7 @@ message: "If you use CoupLB in your research, please cite the paper below."
 title: "CoupLB: Coupled Lattice Boltzmann Package for LAMMPS"
 type: software
 repository-code: "https://github.com/tengzhang48/CoupLB"
+license: GPL-2.0-only
 authors:
   - family-names: Alkuino
     given-names: Gabriel
