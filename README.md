@@ -135,6 +135,9 @@ See **[docs/theory.md](docs/theory.md)** for full details.
 - Single ghost layer: IBM delta stencils are clipped (and renormalized,
   momentum-conserving) for particles within dx/2 below a subdomain's upper
   face or periodic wrap; measured ~0.06% relative force error in smooth flow
+- STL Bouzidi bounce-back is not exactly mass-conserving for interior
+  obstacles with impinging flow (planar channels conserve exactly);
+  monitor with `check_every` and resolve obstacles with >= 10 cells
 - Fluid state is preserved across `run` commands only if the domain
   decomposition and timestep are unchanged (otherwise reset, with warning)
 

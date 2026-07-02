@@ -27,6 +27,15 @@
   asserting `run 5000; run 5000` is bit-identical to `run 10000`.
   Verified to FAIL on the pre-fix code and PASS after the fix, serial
   and 4-rank.
+- `tests/stl_channel/in.stl_channel_shifted`: STL channel translated
+  +0.3 dx so wall links carry sub-cell distances (lambda 0.2/0.8);
+  validates that Bouzidi interpolation places walls at the true STL
+  surface (0.17% max error vs shifted-wall parabola). The grid-aligned
+  case alone cannot see lambda errors. `validate.sh` runs both.
+- Characterized STL mass conservation: planar channels (aligned and
+  shifted) conserve mass to machine precision; interior obstacles with
+  impinging flow leak ~0.02%/1000 steps at 2-cell resolution (known
+  interpolated-bounce-back property; documented in theory.md/README).
 
 ### Documentation
 - `docs/DEVNOTES_2026-07-02.md`: root-cause analysis of the run-boundary

@@ -112,6 +112,14 @@ particle–fluid oscillation; reduce `xi_ibm` or increase `md_per_lb`.
   Expect O(10%) velocity errors near immersed boundaries with coarse marker
   spacing.
 - **Fixed Lagrangian volume:** IBM spread uses `dv = dx^D` for all markers.
+- **STL wall mass conservation:** Bouzidi interpolated bounce-back is not
+  exactly mass-conserving. Planar STL walls parallel to the flow conserve
+  mass to machine precision (leaks cancel; no normal flux), but interior
+  obstacles with impinging flow leak slowly through wall links. Measured:
+  ~0.02% mass loss per 1000 steps for a deliberately under-resolved
+  2-cell obstacle at Ma~0.003; the leak shrinks with resolution (keep
+  obstacle size/dx >= 10) and lower Ma. Monitor with `check_every`, which
+  reports total mass.
 
 ## Performance
 
