@@ -1,5 +1,54 @@
 # Changelog
 
+## 2026-07-02
+
+### Fixed
+- **Fluid state was silently reset to quiescent equilibrium at every `run`
+  command boundary** (`init()` reallocated the grid unconditionally). The grid
+  is now preserved across `run` commands when the decomposition and timestep
+  are unchanged; `run N; run M` now matches `run N+M` bit-exactly for pure
+  fluid runs. A reset (with a screen warning) still occurs if the
+  decomposition or timestep changes between runs.
+- Grid forces are cleared in `setup()` so a run continuation does not
+  double-apply the previous run's final IBM force spread.
+- Stability check (`check_every`) now hard-errors on non-finite fluid
+  mass/momentum. Previously a NaN field reported `Ma=0.0000` because
+  max-reductions ignore NaN, so corrupted runs continued silently.
+- `xi_ibm` validation corrected: the stability-relevant quantity is the
+  per-substep relaxation `xi_ibm/md_per_lb`, so the bound is now
+  `0 < xi_ibm <= md_per_lb` (was `<= 1`, which rejected the shipped
+  `examples/swimming` deck that uses `xi_ibm 5` with `md_per_lb 167`).
+- Examples: create the `vtk/` output directory (`shell mkdir -p vtk`);
+  previously both examples aborted at step 0 in a fresh checkout because
+  git does not track the empty directory.
+
+### Added
+- `tests/run_continuation/`: differential-invariant regression test
+  asserting `run 5000; run 5000` is bit-identical to `run 10000`.
+  Verified to FAIL on the pre-fix code and PASS after the fix, serial
+  and 4-rank.
+
+### Documentation
+- `docs/DEVNOTES_2026-07-02.md`: root-cause analysis of the run-boundary
+  reset (LAMMPS `init()` is per-run, not per-fix; state creation was not
+  idempotent), why the test suite missed it, and lessons learned.
+- `docs/architecture.md`: new "Fix Lifecycle and Run Continuation" section.
+- `docs/theory.md`: xi_ibm allowed range and penalty-coupling mass-ratio
+  stability guidance.
+- `docs/parallelism.md`: documented upper-face IBM stencil clipping with
+  the single ghost layer.
+- README build section: document that `COUPLB` must be registered in
+  `cmake/CMakeLists.txt` (or `src/Makefile`) before `-DPKG_COUPLB=yes` /
+  `make yes-couplb` works, and that the examples need MOLECULE+BPM+DIPOLE.
+- `keywords.md`: updated `xi_ibm` bounds.
+
+### Known limitations (documented, unchanged)
+- IBM delta-kernel stencils are clipped (and renormalized) for particles
+  within `dx/2` below a subdomain's upper face or a periodic wrap, because
+  the grid has a single ghost layer. Measured effect ~6e-4 relative force
+  error in a smooth-flow test; totals remain momentum-conserving. A second
+  ghost layer would remove this.
+
 ## 2026-04-29
 
 ### Fixed

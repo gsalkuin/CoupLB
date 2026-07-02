@@ -17,7 +17,7 @@ fix ID group couplb Nx Ny Nz nu rho0 [keywords...]
 | Keyword | Arguments | Default | Description |
 |:--------|:----------|:--------|:------------|
 | `md_per_lb` | N | 1 | MD steps per LBM step. Enables sub-stepping with momentum-conserving IBM. |
-| `xi_ibm` | value | 1.0 | IBM relaxation factor (ξ ≥ 0). 0 = no coupling, 1 = nominal, <1 softens. |
+| `xi_ibm` | value | 1.0 | IBM relaxation factor, 0 < ξ ≤ `md_per_lb` (per-substep relaxation ξ/N ≤ 1). 1 = nominal, <1 softens. |
 | `gravity` | gx gy gz | 0 0 0 | Body force acceleration. Each component can be constant or `v_varname`. |
 | `wall_x` | lo hi | 0 0 | X-boundary: 0=periodic, 1=no-slip, 2=moving, 3=free-slip, 4=open. |
 | `wall_y` | lo hi | 0 0 | Y-boundary (same types). |

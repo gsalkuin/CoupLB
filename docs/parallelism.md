@@ -14,6 +14,15 @@ processors 2 4 2    # 16 MPI ranks: 2×4×2
   in that direction: `Nx % px == 0`, `Ny % py == 0`, `Nz % pz == 0`.
 - **Minimum cells per rank:** 3 for Roma kernel, 4 for Peskin4 kernel
   (per direction). Below this, IBM stencils get clipped.
+- **Upper-face stencil clipping:** with a single ghost layer, a particle
+  within dx/2 below a subdomain's upper face (or a periodic wrap) loses the
+  farthest stencil node in that direction. The kernel weights are
+  renormalized, so totals stay momentum-conserving and constant fields
+  interpolate exactly; the measured effect in smooth flow is ~6e-4 relative
+  force error. MPI is exactly consistent with the serial periodic case
+  (verified 1-vs-2-rank bit-identical). A second ghost layer would remove
+  this; until then, expect exact rank-count invariance only for particles
+  more than one cell away from subdomain faces.
 - For wall-bounded flows, split along the wall-normal direction first.
 
 ### Example Decompositions

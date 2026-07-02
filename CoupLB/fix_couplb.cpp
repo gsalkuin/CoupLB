@@ -51,7 +51,7 @@ static bool is_couplb_keyword(const char* s)
 
    Keywords:
      md_per_lb N         MD steps per LBM step (default 1)
-     xi_ibm value        IBM penalty relaxation factor, 0 < xi <= 1
+     xi_ibm value        IBM penalty relaxation factor, 0 < xi <= md_per_lb
      gravity gx gy gz    body force acceleration;
                          each component can be a constant or v_varname
      wall_x lo hi        x-boundary: 0=periodic 1=no-slip 2=moving 3=free-slip 4=open
@@ -91,6 +91,7 @@ FixCoupLB::FixCoupLB(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg),
 
   md_per_lb = 1;
   md_sub_count = 0;
+  dt_LBM_prev = -1.0;
   xi_ibm = 1.0;
   gx_ext = gy_ext = gz_ext = 0.0;
   gxstyle = gystyle = gzstyle = NONE_G;
@@ -126,8 +127,10 @@ FixCoupLB::FixCoupLB(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg),
     } else if (strcmp(arg[iarg],"xi_ibm")==0) {
       if (iarg+2>narg) error->all(FLERR,"fix couplb xi_ibm: need 1 value");
       xi_ibm = std::stod(arg[iarg+1]);
-      if (xi_ibm <= 0.0 || xi_ibm > 1.0 || !std::isfinite(xi_ibm))
-        error->all(FLERR, "fix couplb: xi_ibm must satisfy 0 < xi_ibm <= 1");
+      // Upper bound depends on md_per_lb (which may be parsed later),
+      // so the xi_ibm <= md_per_lb check is deferred to init().
+      if (xi_ibm <= 0.0 || !std::isfinite(xi_ibm))
+        error->all(FLERR, "fix couplb: xi_ibm must be positive and finite");
       iarg += 2;
     } else if (strcmp(arg[iarg],"gravity")==0) {
       if (iarg+4>narg) error->all(FLERR,"fix couplb gravity: need 3 values");
@@ -296,8 +299,12 @@ void FixCoupLB::init()
 {
   if (md_per_lb < 1)
     error->all(FLERR, "fix couplb: md_per_lb must be >= 1");
-  if (xi_ibm <= 0.0 || xi_ibm > 1.0 || !std::isfinite(xi_ibm))
-    error->all(FLERR, "fix couplb: xi_ibm must satisfy 0 < xi_ibm <= 1");
+  // The per-substep relaxation factor is xi_ibm/md_per_lb; values above 1
+  // over-relax the penalty force and are unstable. xi_ibm > 1 is legitimate
+  // when spread over md_per_lb > 1 substeps (e.g. xi_ibm 5 with md_per_lb 167).
+  if (xi_ibm <= 0.0 || !std::isfinite(xi_ibm) || xi_ibm > (double)md_per_lb)
+    error->all(FLERR, "fix couplb: xi_ibm must satisfy 0 < xi_ibm <= md_per_lb "
+               "(per-substep relaxation xi_ibm/md_per_lb cannot exceed 1)");
 
   if (gxstr) {
     gxvar = input->variable->find(gxstr);
@@ -537,6 +544,29 @@ void FixCoupLB::setup_grid()
   int z1=int(std::floor((sh[2]-domain_lo[2])/dx+eps));
   int nlx=x1-x0, nly=y1-y0, nlz=is3d?(z1-z0):1;
   if (nlx<=0||nly<=0||(is3d&&nlz<=0)) error->one(FLERR,"fix couplb: local grid empty");
+
+  // Run continuation: LAMMPS calls init() at the start of every `run`
+  // command. If the grid already exists with the same local dimensions,
+  // offsets, and LBM timestep, PRESERVE the fluid state — reallocating
+  // here would silently reset the fluid to quiescent equilibrium at
+  // every `run` boundary. Only the relaxation time is refreshed.
+  const bool same_grid = is3d
+    ? (grid3d && grid3d->nx==nlx && grid3d->ny==nly && grid3d->nz==nlz &&
+       grid3d->offset[0]==x0 && grid3d->offset[1]==y0 && grid3d->offset[2]==z0)
+    : (grid2d && grid2d->nx==nlx && grid2d->ny==nly &&
+       grid2d->offset[0]==x0 && grid2d->offset[1]==y0);
+
+  if (same_grid && dt_LBM == dt_LBM_prev) {
+    if (is3d) bgk3d->set_tau(tau);
+    else      bgk2d->set_tau(tau);
+    return;
+  }
+  if ((grid3d || grid2d) && comm->me==0 && screen)
+    fprintf(screen,"CoupLB WARNING: %s changed between runs; "
+            "fluid state reset to equilibrium\n",
+            same_grid ? "timestep" : "domain decomposition");
+  dt_LBM_prev = dt_LBM;
+
   if (screen) fprintf(screen,"CoupLB rank %d: %dx%dx%d offset(%d,%d,%d)\n",comm->me,nlx,nly,nlz,x0,y0,z0);
 
   int pn[3][2]; for(int d=0;d<3;d++) { pn[d][0]=comm->procneigh[d][0]; pn[d][1]=comm->procneigh[d][1]; }
@@ -629,6 +659,15 @@ void FixCoupLB::setup(int vflag)
   // LAMMPS calls setup() before the first timestep. Initialize IBM
   // forces for the first fluid step, but do not advance the LBM state:
   // step-0 output should represent the actual initial condition.
+  //
+  // Clear grid forces first: on a run continuation the previous run's
+  // last post_force() already spread a contribution (and left nonzero
+  // ghost-layer forces). Without the clear, the setup spread below
+  // double-counts and the first LBM step of the new run gets ~2x the
+  // IBM force. Clearing makes `run N; run M` match `run N+M` exactly.
+  if (is3d) grid3d->clear_forces();
+  else      grid2d->clear_forces();
+
   ibm_sub_coupling();
 
   // Flush any IBM ghost forces from the setup substep
@@ -901,10 +940,19 @@ void FixCoupLB::check_stability_precomputed(CoupLB::Grid<L>& g)
 
   double lm,lpx,lpy,lpz; g.compute_diagnostics(lm,lpx,lpy,lpz);
   double gm,gpx,gpy,gpz;
-  MPI_Reduce(&lm,&gm,1,MPI_DOUBLE,MPI_SUM,0,world);
-  MPI_Reduce(&lpx,&gpx,1,MPI_DOUBLE,MPI_SUM,0,world);
-  MPI_Reduce(&lpy,&gpy,1,MPI_DOUBLE,MPI_SUM,0,world);
-  MPI_Reduce(&lpz,&gpz,1,MPI_DOUBLE,MPI_SUM,0,world);
+  MPI_Allreduce(&lm,&gm,1,MPI_DOUBLE,MPI_SUM,world);
+  MPI_Allreduce(&lpx,&gpx,1,MPI_DOUBLE,MPI_SUM,world);
+  MPI_Allreduce(&lpy,&gpy,1,MPI_DOUBLE,MPI_SUM,world);
+  MPI_Allreduce(&lpz,&gpz,1,MPI_DOUBLE,MPI_SUM,world);
+
+  // The Ma check above cannot detect NaN: max-reductions ignore NaN
+  // (comparisons are false), so a corrupted field reports Ma=0.
+  // Mass/momentum sums DO propagate NaN — trap the failure here.
+  if (!std::isfinite(gm) || !std::isfinite(gpx) ||
+      !std::isfinite(gpy) || !std::isfinite(gpz))
+    error->all(FLERR,"fix couplb: non-finite fluid mass/momentum "
+               "(fluid state corrupted; check forcing, boundaries, and tau)");
+
   if (comm->me==0 && screen)
     fprintf(screen,"CoupLB step %ld: Ma=%.4f mass=%.8e mom=(%.4e,%.4e,%.4e)\n",
       (long)update->ntimestep,ma,gm,gpx,gpy,gpz);

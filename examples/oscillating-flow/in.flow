@@ -105,6 +105,8 @@ fix  print all print 8400 "${osc} ${dxt} ${dyt} ${dzt}" file right-tip.txt &
 
 fix  nve free nve/bpm/sphere
 
+shell mkdir -p vtk
+
 fix  ibm free couplb 160 96 80 ${nuf} ${rhof} &
      md_per_lb 84 &
      wall_y 1 1 &

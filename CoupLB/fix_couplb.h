@@ -46,6 +46,7 @@ private:
   double xi_ibm;
 
   double dt_LBM;
+  double dt_LBM_prev;      // detects timestep changes across run commands
   double force_scale;
   double vel_scale;
 

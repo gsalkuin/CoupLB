@@ -46,9 +46,21 @@ run 50000
 
 C++14, MPI. No external dependencies.
 
+CoupLB is an external package, so LAMMPS must be told it exists before
+`yes-couplb` / `-DPKG_COUPLB` will work:
+
+1. Copy the `CoupLB/` source files into `lammps/src/COUPLB/`.
+2. Register the package name:
+   - **CMake:** add `COUPLB` to the `set(STANDARD_PACKAGES ...)` list in
+     `lammps/cmake/CMakeLists.txt` (alphabetical, near `COLLOID`).
+     Without this, `-DPKG_COUPLB=yes` is **silently ignored**.
+   - **Traditional make:** add `couplb` to the `PACKAGE` list in
+     `lammps/src/Makefile`.
+
+Then:
+
 ```bash
 cd lammps/src
-# Copy CoupLB files into src/COUPLB/
 make yes-couplb
 make -j8 mpi
 ```
@@ -59,6 +71,10 @@ mkdir build && cd build
 cmake ../cmake -DPKG_COUPLB=yes -DBUILD_MPI=yes
 make -j8
 ```
+
+The validation tests under `tests/` need only the COUPLB package. The
+`examples/` decks additionally require the MOLECULE, BPM, and DIPOLE
+packages (`-DPKG_MOLECULE=yes -DPKG_BPM=yes -DPKG_DIPOLE=yes`).
 
 ## Syntax
 
@@ -88,6 +104,7 @@ Full syntax, keyword table, and extended examples: **[docs/keywords.md](docs/key
 | [docs/parallelism.md](docs/parallelism.md) | MPI decomposition, ghost exchange, OpenMP |
 | [docs/io.md](docs/io.md) | VTK, solid output, profiles, checkpoint/restart |
 | [docs/DEVNOTES_2026-05-30.md](docs/DEVNOTES_2026-05-30.md) | Notes on setup, periodic IBM, PVD time, and profile fixes |
+| [docs/DEVNOTES_2026-07-02.md](docs/DEVNOTES_2026-07-02.md) | Pre-release review: run-continuation bug root cause, lessons learned |
 
 ## IBM Coupling (overview)
 
@@ -115,6 +132,11 @@ See **[docs/theory.md](docs/theory.md)** for full details.
 - Checkpoint tied to processor count and decomposition
 - VTK gathers to rank 0 (scalability limit for very large grids)
 - Fixed Lagrangian marker volume
+- Single ghost layer: IBM delta stencils are clipped (and renormalized,
+  momentum-conserving) for particles within dx/2 below a subdomain's upper
+  face or periodic wrap; measured ~0.06% relative force error in smooth flow
+- Fluid state is preserved across `run` commands only if the domain
+  decomposition and timestep are unchanged (otherwise reset, with warning)
 
 ## Examples
 
@@ -129,7 +151,8 @@ tests/
 ├── drag_forces_point/  — IBM drag on point particle
 ├── drag_forces_sphere/ — IBM drag on sphere
 ├── drag_forces_sphere_vtk/ — with VTK output
-└── subcycling/         — sub-stepping validation
+├── subcycling/         — sub-stepping validation
+└── run_continuation/   — `run N; run M` == `run N+M` bit-exact (differential invariant)
 ```
 
 ## TODO

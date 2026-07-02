@@ -61,6 +61,43 @@ Sub-steps 1..N-1: IBM coupling only (re-interpolate with existing fluid field)
 Sub-step N-1 (last): exchange_forces after spreading
 ```
 
+## Fix Lifecycle and Run Continuation
+
+LAMMPS calls `Fix::init()` at the start of **every** `run` command, not once
+per fix lifetime. CoupLB therefore separates two kinds of work inside
+`init()`/`setup_grid()`:
+
+- **Re-derived every run:** unit-conversion scales (`dt_LBM`, `vel_scale`,
+  `force_scale`), relaxation time τ, boundary re-marking, wall-flag
+  precomputation. These depend on `timestep`, which the user may change
+  between runs.
+- **Created once:** the grid itself and the distribution functions f_i — the
+  primary state of the fluid, which cannot be reconstructed from atom data.
+
+`setup_grid()` preserves the existing fluid state when the local grid
+dimensions, offsets, and `dt_LBM` are unchanged since the previous run, so
+
+```
+run 5000
+run 5000
+```
+
+is bit-identical to `run 10000` (regression-tested in
+`tests/run_continuation/`). If the domain decomposition or the timestep
+changes between runs, the fluid is re-initialized to quiescent equilibrium
+and a `CoupLB WARNING` is printed — there is no physically meaningful way to
+map the old populations onto a new layout (use `checkpoint`/`restart` with
+an unchanged layout to carry state across separate LAMMPS invocations).
+
+`setup()` (called after `init()`, before the first timestep of each run)
+clears the grid force arrays before spreading the initial IBM forces, so a
+run boundary does not double-count the previous run's final force spread.
+
+Historical note: before 2026-07-02 the grid was unconditionally reallocated
+and set to equilibrium in every `init()`, silently resetting the fluid at
+every `run` boundary. See `docs/DEVNOTES_2026-07-02.md` for the root-cause
+analysis and the lessons drawn from it.
+
 ## MPI Communication (three types)
 
 | Exchange | Direction | What | When |

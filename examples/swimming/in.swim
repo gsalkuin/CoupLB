@@ -45,6 +45,8 @@ fix             efield robot efield v_bx v_by 0
 # Buoyancy-corrected gravity: g_eff = g * (rho_robot - rho_fluid) / rho_robot
 fix             grav robot gravity 453.5806 vector 0 -1 0
 
+shell mkdir -p vtk
+
 fix             ibm robot couplb 640 960 1 0.01 0.1 &
                 xi_ibm 5.0 &
                 md_per_lb 167 &

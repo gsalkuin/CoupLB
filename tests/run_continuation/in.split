@@ -1,0 +1,34 @@
+# Run-continuation invariant -- same physics as in.whole, but the run
+# is split into two `run` commands. LAMMPS calls fix init()/setup() again
+# at the second `run`; the fluid state must be preserved across the
+# boundary, so the step-10000 profile must be bit-identical to in.whole.
+#
+# Before the 2026-07-02 fix, init() reset the fluid to quiescent
+# equilibrium at every `run` boundary and this test fails loudly.
+
+units           lj
+dimension       2
+boundary        p f p
+atom_style      atomic
+
+region          box block 0.0 16.0 0.0 64.0 -0.5 0.5
+create_box      1 box
+create_atoms    1 single 8.0 32.0 0.0
+mass            1 1.0
+pair_style      none
+
+group           noatoms empty
+
+timestep        1.0
+
+fix flow noatoms couplb 16 64 1 0.1 1.0 &
+    wall_y 1 1 &
+    gravity 5e-6 0.0 0.0 &
+    kernel roma &
+    output 5000 prof_split.dat
+
+thermo          5000
+thermo_style    custom step cpu
+run             5000
+run             5000
+print "=== split run done ==="

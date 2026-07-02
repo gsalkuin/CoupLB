@@ -72,10 +72,21 @@ prescribed velocity. Open boundary nodes are excluded from interpolation.
 
 ### xi_ibm Tuning
 
+Allowed range: `0 < xi_ibm <= md_per_lb`. The stability-relevant quantity is
+the per-substep relaxation xi_ibm/md_per_lb, which must not exceed 1; values
+above 1 are legitimate when spread over `md_per_lb > 1` substeps (e.g.
+`xi_ibm 5` with `md_per_lb 167` in `examples/swimming`).
+
 For thin structures in strongly driven flows, values well below 1.0
 (e.g., 0.01–0.1) create effectively one-way coupling. The momentum-conserving
 version (xi_ibm = 1/md_per_lb) gives proper two-way coupling but requires
 careful force scaling.
+
+Two-way penalty coupling also has a mass-ratio stability limit: the
+effective per-step momentum exchanged, `xi_ibm * m / md_per_lb`, should not
+greatly exceed the fluid mass in a kernel cell (`rho * dx^D`). Heavy
+particles with `xi_ibm` near 1 and `md_per_lb = 1` can drive a growing
+particle–fluid oscillation; reduce `xi_ibm` or increase `md_per_lb`.
 
 ---
 
