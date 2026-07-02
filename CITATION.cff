@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use CoupLB in your research, please cite the paper below."
+title: "CoupLB: Coupled Lattice Boltzmann Package for LAMMPS"
+type: software
+repository-code: "https://github.com/tengzhang48/CoupLB"
+authors:
+  - family-names: Alkuino
+    given-names: Gabriel
+  - family-names: Zhang
+    given-names: Teng
+preferred-citation:
+  type: article
+  title: "Bonded-particle model for magneto-elastic rods"
+  authors:
+    - family-names: Alkuino
+      given-names: Gabriel
+    - family-names: Clemmer
+      given-names: Joel T.
+    - family-names: Santangelo
+      given-names: Christian D.
+    - family-names: Zhang
+      given-names: Teng
+  year: 2026
+  # arXiv preprint; update journal/volume/DOI when the accepted version appears.
+  url: "https://arxiv.org/abs/2603.27279"

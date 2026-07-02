@@ -1,0 +1,27 @@
+# Restart-equality invariant -- reference: uninterrupted 10000-step run.
+# Compare against in.part1 (checkpoint at 5000) + in.part2 (restart, run
+# to 10000): the step-10000 profiles must be bit-identical.
+
+units           lj
+dimension       2
+boundary        p f p
+atom_style      atomic
+
+region          box block 0.0 16.0 0.0 64.0 -0.5 0.5
+create_box      1 box
+create_atoms    1 single 8.0 32.0 0.0
+mass            1 1.0
+pair_style      none
+
+group           noatoms empty
+
+timestep        1.0
+
+fix flow noatoms couplb 16 64 1 0.1 1.0 &
+    wall_y 1 1 &
+    gravity 5e-6 0.0 0.0 &
+    output 5000 prof_ref.dat
+
+thermo          5000
+run             10000
+print "=== reference run done ==="

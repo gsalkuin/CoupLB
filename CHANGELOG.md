@@ -36,6 +36,15 @@
   shifted) conserve mass to machine precision; interior obstacles with
   impinging flow leak ~0.02%/1000 steps at 2-cell resolution (known
   interpolated-bounce-back property; documented in theory.md/README).
+- `tests/couette2d/`: moving-wall (type 2) validation vs analytic linear
+  profile — machine precision. Wall type 2 previously had no test.
+- `tests/restart_equality/`: checkpoint + restart == uninterrupted run,
+  bit-identical (differential invariant).
+- `tests/run_all.sh` + `tests/README.md`: one-command suite runner
+  (CI-ready, nonzero exit on failure) and per-test documentation;
+  `poiseuille2d`/`poiseuille3d` gained validate.sh wrappers.
+- `CITATION.cff`: GitHub citation metadata pointing at the accepted paper
+  (arXiv:2603.27279; update DOI when the journal version appears).
 
 ### Documentation
 - `docs/DEVNOTES_2026-07-02.md`: root-cause analysis of the run-boundary

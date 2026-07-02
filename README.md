@@ -148,15 +148,21 @@ examples/
 ├── oscillating-flow/   — oscillating body force with MD particles
 ├── swimming/           — IBM-coupled swimmer with custom lam read
 tests/
+├── run_all.sh          — run the whole automated suite (see tests/README.md)
 ├── poiseuille2d/       — Poiseuille flow validation
 ├── poiseuille3d/       — 3D channel validation
-├── stl_channel/        — STL-defined no-slip channel validation
+├── couette2d/          — moving-wall Couette validation (machine precision)
+├── stl_channel/        — STL no-slip channel, grid-aligned + sub-cell shifted
 ├── drag_forces_point/  — IBM drag on point particle
 ├── drag_forces_sphere/ — IBM drag on sphere
 ├── drag_forces_sphere_vtk/ — with VTK output
 ├── subcycling/         — sub-stepping validation
-└── run_continuation/   — `run N; run M` == `run N+M` bit-exact (differential invariant)
+├── run_continuation/   — `run N; run M` == `run N+M` bit-exact (differential invariant)
+└── restart_equality/   — checkpoint+restart == uninterrupted run bit-exact
 ```
+
+Run the automated suite with `bash tests/run_all.sh` (details and per-test
+reference results: [tests/README.md](tests/README.md)).
 
 ## TODO
 

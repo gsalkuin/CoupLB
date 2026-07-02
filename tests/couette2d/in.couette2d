@@ -1,0 +1,31 @@
+# 2D Couette flow -- moving-wall (type 2) boundary validation.
+# Bottom wall no-slip (type 1), top wall moving (type 2) at U=0.02.
+# Steady state: linear profile u(y) = U * (y + 0.5) / Ny.
+# Machine-precision agreement expected (exact for linear profiles in LBM).
+# Validate: bash validate.sh  (or python ../poiseuille2d/validate.py couette couplb_couette.dat 0.02)
+
+units           lj
+dimension       2
+boundary        p f p
+atom_style      atomic
+
+region          box block 0.0 8.0 0.0 32.0 -0.5 0.5
+create_box      1 box
+create_atoms    1 single 4.0 16.0 0.0
+mass            1 1.0
+pair_style      none
+
+group           noatoms empty
+
+timestep        1.0
+
+fix flow noatoms couplb 8 32 1 0.1 1.0 &
+    wall_y 1 2 &
+    wall_vel 0.02 0.0 0.0 &
+    output 5000 couplb_couette.dat &
+    check_every 5000
+
+thermo          10000
+thermo_style    custom step cpu
+run             40000
+print "=== 2D Couette test done ==="
